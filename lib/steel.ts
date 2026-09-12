@@ -1,27 +1,8 @@
-type SteelSession = {
+export type SteelSession = {
   id: string
   debugUrl?: string
   sessionViewerUrl?: string
   websocketUrl?: string
-}
-
-export type SteelScrapeResult = {
-  url: string
-  content?: {
-    markdown?: string
-    html?: string
-    cleanedHtml?: string
-    cleaned_html?: string
-  }
-  metadata?: {
-    title?: string
-    statusCode?: number
-    status_code?: number
-    url?: string
-    canonical?: string
-  }
-  screenshot?: { url?: string }
-  links?: Array<{ text?: string; url?: string }>
 }
 
 const STEEL_API = process.env.STEEL_API_URL?.replace(/\/$/, "") || "https://api.steel.dev/v1"
@@ -68,18 +49,4 @@ export async function createSteelSession(): Promise<SteelSession> {
 export async function releaseSteelSession(sessionId: string) {
   if (!apiKey() || !sessionId) return
   await steelFetch(`/sessions/${encodeURIComponent(sessionId)}/release`, { method: "POST" })
-}
-
-export async function scrapeWithSteel(url: string): Promise<SteelScrapeResult> {
-  const response = await steelFetch("/scrape", {
-    method: "POST",
-    body: JSON.stringify({
-      url,
-      format: ["markdown", "html"],
-      screenshot: true,
-      delay: 800,
-    }),
-  })
-  const data = (await response.json()) as SteelScrapeResult
-  return { ...data, url }
 }

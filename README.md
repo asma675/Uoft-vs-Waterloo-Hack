@@ -14,8 +14,7 @@ TrustMesh is a zero-trust verification and safety layer for autonomous browser a
 - **Human approval / rejection gate** — actions can be staged, approved, or rejected. A separate Executor Steel session is created only after valid human approval in live mode.
 - **Audit trail + JSON export** — mission events record provisioning, research, threats, scoring, and human decisions.
 - **Demo mode** — the entire workflow runs without credentials, making judging/demo setup reliable.
-- **Live direct-URL verification** — with `STEEL_API_KEY`, paste URLs into the mission and TrustMesh will inspect those pages with Steel.
-- **Autonomous live research** — add `OPENAI_API_KEY` to let the Scout planner discover independent sources with web search, then have Steel fetch the actual pages for SignalShield and verification.
+- **Autonomous live research** — add `ANTHROPIC_API_KEY` to let Scout and Verifier independently browse the live web (navigate, read, click) via Claude tool-calling over raw Chrome DevTools Protocol against isolated Steel sessions, then have the Adversary screen the actual pages they used with SignalShield. If the mission goal names a specific URL, the agents will typically go straight there — there's no separate "URL mode," the same Claude-driven agents handle both cases.
 
 ## Architecture
 
@@ -64,23 +63,22 @@ Add these to `.env`:
 
 ```bash
 STEEL_API_KEY=your_steel_key
-OPENAI_API_KEY=your_openai_key
-OPENAI_MODEL=gpt-5.6-luna
+ANTHROPIC_API_KEY=your_anthropic_key
+TRUSTMESH_MODEL=claude-sonnet-5
 ```
 
 Then restart the app, enable **LIVE STEEL**, and launch a mission.
 
 ### Live modes
 
-1. **Steel + URLs in the mission** — works with only `STEEL_API_KEY`. Example: `Verify https://example.com and https://example.org for manipulation before I act.`
-2. **Steel + autonomous discovery** — add `OPENAI_API_KEY`; TrustMesh can find independent web sources first, then Steel inspects the actual pages.
-3. **Demo mode** — no credentials. Uses a deterministic attack scenario so every feature is judgeable even if Wi-Fi/API access fails.
+1. **Demo mode** — no credentials. Uses a deterministic attack scenario so every feature is judgeable even if Wi-Fi/API access fails.
+2. **Live Steel research** — requires both `STEEL_API_KEY` and `ANTHROPIC_API_KEY`. Scout and Verifier browse the live web independently via Claude, the Adversary screens their sources with SignalShield, and a real Trust Score is computed from what they actually found. Missing either key falls back to demo mode with a notice explaining why.
 
 ## API
 
 | Method | Route | Purpose |
 |---|---|---|
-| `GET` | `/api/health` | Reports Steel + optional AI planner configuration |
+| `GET` | `/api/health` | Reports Steel + Claude agent configuration |
 | `POST` | `/api/missions` | Creates a demo or live zero-trust research mission |
 | `POST` | `/api/approve` | Records human approval and optionally provisions the Executor |
 | `POST` | `/api/reject` | Records human rejection; Executor stays locked |

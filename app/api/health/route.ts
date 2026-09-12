@@ -1,4 +1,4 @@
-import { aiResearchConfigured } from "@/lib/openai-research"
+import { anthropicConfigured } from "@/lib/anthropic"
 import { steelConfigured } from "@/lib/steel"
 
 export async function GET() {
@@ -6,7 +6,7 @@ export async function GET() {
     ok: true,
     service: "trustmesh-api",
     steel: steelConfigured() ? "configured" : "demo",
-    aiResearch: aiResearchConfigured() ? "configured" : "optional",
+    aiResearch: anthropicConfigured() ? "configured" : "optional",
     execution: "human-gated",
     timestamp: new Date().toISOString(),
   })

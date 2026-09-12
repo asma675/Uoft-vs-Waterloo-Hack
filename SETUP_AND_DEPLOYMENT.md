@@ -16,17 +16,21 @@ Copy `.env.example` to `.env`.
 
 ### `STEEL_API_KEY`
 
-Recommended for the hackathon demo. Enables real isolated Steel cloud sessions and the Steel scrape/content inspection path.
+Recommended for the hackathon demo. Enables real isolated Steel cloud sessions, driven directly over the Chrome DevTools Protocol (no Playwright — this app deploys to Cloudflare Workers, where Playwright's driver assumptions don't hold).
 
 Without it, TrustMesh automatically remains usable in complete demo mode.
 
-### `OPENAI_API_KEY` (optional)
+### `ANTHROPIC_API_KEY` (required for live mode)
 
-Recommended for the strongest live demo. Enables autonomous source discovery and semantic cross-source evidence synthesis. It is **not** required if you paste explicit URLs into a live Steel mission.
+Powers the Scout and Verifier agents' browsing loop (navigate/read/click via Claude tool-calling) and the Adversary's manipulation classifier. Live Steel missions require both this and `STEEL_API_KEY` — missing either falls back to demo mode with a notice.
 
-### `OPENAI_MODEL` (optional)
+### `TRUSTMESH_MODEL` (optional)
 
-Defaults to `gpt-5.6-luna`. Keep this configurable rather than hard-coding a model in production.
+Defaults to `claude-sonnet-5` — a deliberately budget-conscious default. Bump to a stronger model via this env var if quality matters more than cost for your run.
+
+### `TRUSTMESH_MAX_TURNS_PER_AGENT` (optional)
+
+Defaults to `8`. Caps worst-case token spend per agent per mission — an agent that can't find a confident answer within this many turns returns its best partial finding instead of running unbounded.
 
 ### `STEEL_SESSION_TIMEOUT_MS` / `STEEL_INACTIVITY_TIMEOUT_MS`
 
@@ -49,7 +53,7 @@ pnpm start
 
 For maximum reliability, start in demo mode. It demonstrates the full workflow with no outside dependency. Then toggle **LIVE STEEL** to show real browser sessions if credentials/network are available.
 
-For autonomous live research, configure both keys. For a deterministic live path using only Steel, put 2–3 URLs directly in the mission text.
+For live research, configure both `STEEL_API_KEY` and `ANTHROPIC_API_KEY` — the agents will browse to a URL named directly in the mission text if one is given, or search for one themselves if not.
 
 ## 5. What is already functional
 
@@ -58,11 +62,10 @@ For autonomous live research, configure both keys. For a deterministic live path
 - Real Steel research session provisioning
 - Embedded/openable Steel `debugUrl` live views
 - Explicit Steel session release
-- Autonomous source discovery when OpenAI is configured
-- Steel page scraping for actual source inspection
+- Claude-powered autonomous browsing agents (Scout/Verifier navigate, read, and click via tool-calling over raw CDP)
 - SignalShield heuristics
 - Source quarantine
-- Cross-source evidence synthesis
+- Cross-source evidence comparison
 - Explainable Trust Score
 - Human approve/reject
 - Post-approval Executor provisioning
@@ -94,8 +97,8 @@ Next/Cloudflare/Vercel web app
   ├── TrustMesh API routes
   ├── Auth + rate limit
   ├── Mission/audit database
-  ├── OpenAI planner/verifier (optional)
-  └── Steel Sessions + Scrape API
+  ├── Claude tool-calling agents (Scout/Verifier/Adversary classifier)
+  └── Steel Sessions, driven over raw CDP
 ```
 
-Keep `STEEL_API_KEY` and `OPENAI_API_KEY` server-side only.
+Keep `STEEL_API_KEY` and `ANTHROPIC_API_KEY` server-side only.
