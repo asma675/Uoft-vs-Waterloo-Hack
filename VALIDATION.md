@@ -13,8 +13,3 @@
 - ✅ TypeScript parser check found no TS1xxx syntax diagnostics in the core app/backend/shared files.
 - ✅ Deterministic demo mission test produced identical SSR seed values across repeated calls.
 - ⚠️ A full `pnpm build` could not be executed in this sandbox because outbound npm registry access is blocked. Run `pnpm install && pnpm build` on the development machine as the final environment-specific check.
-
-## v5.1 CSS import path fix
-- Corrected `frontend/styles/globals.css` to import the root `vendor/shadcn-tailwind-4.13.0.css` with `../../vendor/...` after the frontend/backend reorganization.
-- Verified the referenced vendor stylesheet exists in the final archive.
-- Re-ran local import resolution checks and merge-conflict-marker scans.
