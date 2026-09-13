@@ -2,16 +2,17 @@ export type AgentRole = "scout" | "verifier" | "adversary" | "executor"
 export type AgentState = "queued" | "browsing" | "verified" | "quarantined" | "locked" | "ready" | "executing" | "released"
 export type MissionStatus = "running" | "awaiting_approval" | "approved" | "rejected" | "cancelled"
 export type SignalCategory =
-  | "advertising"
+  | "commercial_language"
   | "sponsored"
   | "affiliate"
-  | "promotional"
   | "ai_directed_instruction"
   | "hidden_text"
   | "prompt_injection"
   | "deceptive_content"
   | "conflict"
   | "suspicious_redirect"
+  | "manufactured_reviews"
+  | "new_domain"
 
 export type SignalSeverity = "info" | "low" | "medium" | "high" | "critical"
 
@@ -98,6 +99,7 @@ export interface Mission {
   recommendedAction: string
   actionRisk: "low" | "medium" | "high"
   quarantinedCount: number
+  noiseFiltered: number
   approvalToken: string
   events: MissionEvent[]
   threat: {
@@ -222,6 +224,16 @@ export function createDemoMission(goal = DEFAULT_GOAL): Mission {
       detail: "Off-screen text contains instructions that are not part of the visible product description.",
       impact: 12,
     },
+    {
+      id: "sig-new-domain",
+      category: "new_domain",
+      severity: "high",
+      sourceId: "src-dealdrop",
+      label: "Newly registered domain",
+      detail: "deal-drop.example was registered 9 days ago. A brand-new domain selling an in-demand laptop at a steep discount is one of the strongest real-world scam indicators.",
+      evidence: "Domain age: 9 days",
+      impact: 18,
+    },
   ]
 
   const sources: SourceRecord[] = [
@@ -334,11 +346,13 @@ export function createDemoMission(goal = DEFAULT_GOAL): Mission {
     recommendedAction: "Stage the verified AeroBook 14 from Northstar at $1,049 for the user's approval.",
     actionRisk: "medium",
     quarantinedCount: sources.filter((source) => source.status === "quarantined").length,
+    noiseFiltered: 2,
     approvalToken,
     events: [
       { id: "evt-1", at: now(), actor: "system", type: "session", message: "Mission created with three isolated research roles." },
       { id: "evt-2", at: now(), actor: "scout", type: "research", message: "Candidate sources and product claims collected." },
       { id: "evt-3", at: now(), actor: "verifier", type: "verification", message: "Core product claims independently corroborated." },
+      { id: "evt-3b", at: now(), actor: "signalshield", type: "threat", message: "SignalShield pre-filtered 2 ad/AI-directed segment(s) from deal-drop.example's page text before any agent reasoned about it." },
       { id: "evt-4", at: now(), actor: "signalshield", type: "threat", message: "AI-targeted instruction and hidden content detected on deal-drop.example." },
       { id: "evt-5", at: now(), actor: "adversary", type: "threat", message: "Suspicious source quarantined and excluded from consensus." },
       { id: "evt-6", at: now(), actor: "system", type: "score", message: `Explainable Trust Score resolved to ${score}/100.` },
@@ -346,7 +360,7 @@ export function createDemoMission(goal = DEFAULT_GOAL): Mission {
     threat: {
       detected: true,
       host: "deal-drop.example",
-      reason: "SignalShield found AI-targeted prompt injection and hidden instructions; the Adversary also found a refurbished-condition mismatch.",
+      reason: "SignalShield found AI-targeted prompt injection and hidden instructions on a domain registered 9 days ago; the Adversary also found a refurbished-condition mismatch.",
     },
   }
 }

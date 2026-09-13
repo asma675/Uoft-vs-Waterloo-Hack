@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk"
 
 import { getAnthropicClient, getMaxTurns, getModel } from "@/lib/anthropic"
 import type { BrowserSession, PageSnapshot } from "@/lib/browser"
+import { redactInfluenceNoise, type NoiseRedaction } from "@/lib/signal-shield"
 
 // Structured result a Scout/Verifier agent reports via the `finish` tool.
 // Shape is deliberately loose (most fields optional) since not every mission
@@ -20,6 +21,7 @@ export interface AgentLoopResult {
   finding: AgentFinding | null
   truncated: boolean
   turnsUsed: number
+  noiseRedactions: NoiseRedaction[]
 }
 
 export interface AgentLoopOptions {
@@ -115,9 +117,18 @@ function trimHistory(messages: Anthropic.MessageParam[]): void {
   }
 }
 
-function formatSnapshot(snapshot: PageSnapshot): string {
+// Sanitizes the page text before the agent ever sees it — ads, sponsorship,
+// and AI-directed manipulation are stripped here, not just flagged after the
+// fact. This is what keeps a page's own marketing/injection copy from
+// influencing which candidate the agent picks in the first place.
+function formatSnapshot(snapshot: PageSnapshot): { content: string; redactions: NoiseRedaction[] } {
+  const { text: cleanText, redactions } = redactInfluenceNoise(snapshot.text)
   const elementLines = snapshot.elements.map((element) => `[${element.index}] ${element.role}: ${element.name}`).join("\n")
-  return `URL: ${snapshot.url}\nTitle: ${snapshot.title}\n\nText:\n${snapshot.text}\n\nInteractive elements:\n${elementLines || "(none found)"}`
+  const noiseNote = redactions.length
+    ? `\n\n[SignalShield pre-filtered ${redactions.length} ad/influence segment(s) from this page before you read it: ${[...new Set(redactions.map((r) => r.label))].join(", ")}]`
+    : ""
+  const content = `URL: ${snapshot.url}\nTitle: ${snapshot.title}\n\nText:\n${cleanText}\n\nInteractive elements:\n${elementLines || "(none found)"}${noiseNote}`
+  return { content, redactions }
 }
 
 async function executeBrowserTool(browser: BrowserSession, name: string, input: Record<string, unknown>): Promise<PageSnapshot> {
@@ -166,6 +177,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
   ]
 
   let lastSnapshot: PageSnapshot | null = null
+  const noiseRedactions: NoiseRedaction[] = []
 
   for (let turn = 1; turn <= maxTurns; turn++) {
     const response = await client.messages.create({
@@ -202,7 +214,9 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       try {
         const snapshot = await executeBrowserTool(browser, call.name, call.input as Record<string, unknown>)
         lastSnapshot = snapshot
-        toolResults.push({ type: "tool_result", tool_use_id: call.id, content: formatSnapshot(snapshot) })
+        const { content, redactions } = formatSnapshot(snapshot)
+        noiseRedactions.push(...redactions)
+        toolResults.push({ type: "tool_result", tool_use_id: call.id, content })
       } catch (error) {
         toolResults.push({
           type: "tool_result",
@@ -217,7 +231,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     trimHistory(messages)
 
     if (finding) {
-      return { finding, truncated: false, turnsUsed: turn }
+      return { finding, truncated: false, turnsUsed: turn, noiseRedactions }
     }
   }
 
@@ -226,10 +240,11 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       ? {
           summary: "Turn limit reached before a confident finish() call.",
           sourceUrl: lastSnapshot.url,
-          detail: lastSnapshot.text.slice(0, 300),
+          detail: redactInfluenceNoise(lastSnapshot.text).text.slice(0, 300),
         }
       : null,
     truncated: true,
     turnsUsed: maxTurns,
+    noiseRedactions,
   }
 }

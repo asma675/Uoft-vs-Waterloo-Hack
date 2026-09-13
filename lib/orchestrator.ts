@@ -5,6 +5,7 @@ import { runScout } from "@/lib/agents/scout"
 import { runVerifier } from "@/lib/agents/verifier"
 import type { AgentFinding } from "@/lib/agent-loop"
 import { analyzeSource } from "@/lib/signal-shield"
+import { getDomainAgeDays } from "@/lib/domain-age"
 import { calculateTrustScore, createDemoMission, type EvidenceItem, type Mission, type MissionEvent, type SourceRecord } from "@/lib/trustmesh"
 
 const makeId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
@@ -109,10 +110,22 @@ export async function runMission(goal: string, wantsLive: boolean): Promise<Miss
     const scoutFinding: AgentFinding | null = scoutOutcome.status === "fulfilled" ? scoutOutcome.value.finding : null
     const verifierFinding: AgentFinding | null = verifierOutcome.status === "fulfilled" ? verifierOutcome.value.finding : null
 
+    // Ads, sponsorship, and AI-directed instructions were already stripped
+    // out of every page Scout/Verifier read (see redactInfluenceNoise in
+    // lib/signal-shield.ts, applied inside lib/agent-loop.ts) — this is just
+    // the tally of how much noise never reached their reasoning.
+    const noiseFiltered =
+      (scoutOutcome.status === "fulfilled" ? scoutOutcome.value.noiseRedactions.length : 0) +
+      (verifierOutcome.status === "fulfilled" ? verifierOutcome.value.noiseRedactions.length : 0)
+    base.noiseFiltered = noiseFiltered
+
     base.events.push(
       { id: makeId("evt"), at: now(), actor: "scout", type: "research", message: scoutFinding ? `Scout found a candidate: ${scoutFinding.summary}` : "Scout could not find a confident answer." },
       { id: makeId("evt"), at: now(), actor: "verifier", type: "verification", message: verifierFinding ? `Verifier independently found: ${verifierFinding.summary}` : "Verifier could not find a confident answer." },
     )
+    if (noiseFiltered) {
+      base.events.push({ id: makeId("evt"), at: now(), actor: "signalshield", type: "threat", message: `SignalShield pre-filtered ${noiseFiltered} ad/AI-directed segment${noiseFiltered === 1 ? "" : "s"} from page text before Scout/Verifier reasoned about it.` })
+    }
 
     // --- Adversary: screen the actual pages Scout/Verifier used ---
     base.agents = base.agents.map((agent) => (agent.role === "adversary" ? { ...agent, state: "browsing" } : agent))
@@ -130,15 +143,22 @@ export async function runMission(goal: string, wantsLive: boolean): Promise<Miss
     const sources: SourceRecord[] = []
     for (const candidate of candidates) {
       try {
-        const snapshot = await adversaryBrowser.navigate(candidate.finding.sourceUrl)
+        const host = hostOf(candidate.finding.sourceUrl)
+        // Domain-age lookup runs alongside the page read, not after it — it
+        // depends only on the host, which is already known from the finding.
+        const [snapshot, domainAgeDays] = await Promise.all([
+          adversaryBrowser.navigate(candidate.finding.sourceUrl),
+          getDomainAgeDays(host),
+        ])
         sources.push(
           analyzeSource({
             id: `src-${candidate.role}`,
             url: candidate.finding.sourceUrl,
-            title: snapshot.title || hostOf(candidate.finding.sourceUrl),
+            title: snapshot.title || host,
             markdown: snapshot.text,
             redirectedUrl: snapshot.url !== candidate.finding.sourceUrl ? snapshot.url : undefined,
             role: candidate.role,
+            domainAgeDays,
           }),
         )
       } catch (error) {
