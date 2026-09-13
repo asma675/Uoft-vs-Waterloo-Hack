@@ -1,4 +1,4 @@
-import { anthropicConfigured } from "@/lib/anthropic"
+import { aiResearchConfigured } from "@/lib/openai-research"
 import { steelConfigured } from "@/lib/steel"
 
 export async function GET() {
@@ -6,7 +6,8 @@ export async function GET() {
     ok: true,
     service: "trustmesh-api",
     steel: steelConfigured() ? "configured" : "demo",
-    aiResearch: anthropicConfigured() ? "configured" : "optional",
+    aiResearch: aiResearchConfigured() ? "configured" : "optional",
+    virusTotal: process.env.VIRUSTOTAL_API_KEY ? "configured" : "optional",
     execution: "human-gated",
     timestamp: new Date().toISOString(),
   })

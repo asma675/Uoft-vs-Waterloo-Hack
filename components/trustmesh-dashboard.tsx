@@ -7,11 +7,14 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  CircleGauge,
+  Download,
   ExternalLink,
   FileSearch,
   Fingerprint,
   GitBranch,
   Globe2,
+  History,
   LockKeyhole,
   Menu,
   Moon,
@@ -19,8 +22,10 @@ import {
   Radar,
   RefreshCw,
   Search,
+  Settings2,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   Sun,
   TerminalSquare,
   UserCheck,
@@ -36,14 +41,18 @@ import {
   type SignalFinding,
 } from "@/lib/trustmesh"
 
-type View = "mission" | "fleet" | "evidence"
+type View = "mission" | "fleet" | "evidence" | "security" | "runs" | "settings"
 type RunStage = "idle" | "launching" | "researching" | "verifying" | "complete"
 type Health = { steel: "configured" | "demo"; aiResearch: "configured" | "optional" }
+type VirusTotalResult = { url: string; status: string; stats: Record<string, number>; permalink: string }
 
 const navigation: { id: View; label: string }[] = [
   { id: "mission", label: "Mission" },
   { id: "fleet", label: "Sessions" },
   { id: "evidence", label: "Evidence" },
+  { id: "security", label: "SignalShield" },
+  { id: "runs", label: "Audit" },
+  { id: "settings", label: "Config" },
 ]
 
 const stageCopy: Record<RunStage, string> = {
@@ -55,17 +64,16 @@ const stageCopy: Record<RunStage, string> = {
 }
 
 const signalLabels: Record<SignalFinding["category"], string> = {
-  commercial_language: "Commercial",
+  advertising: "Advertising",
   sponsored: "Sponsored",
   affiliate: "Affiliate",
+  promotional: "Promotional",
   ai_directed_instruction: "AI-directed",
   hidden_text: "Hidden text",
   prompt_injection: "Prompt injection",
   deceptive_content: "Deceptive",
   conflict: "Conflict",
   suspicious_redirect: "Redirect",
-  manufactured_reviews: "Manufactured reviews",
-  new_domain: "New domain",
 }
 
 function Mark() {
@@ -94,6 +102,41 @@ function StatusTag({ state }: { state: BrowserAgent["state"] }) {
     released: "RELEASED",
   }
   return <span className={`status-tag status-tag--${state}`}>{labels[state]}</span>
+}
+
+function HeroBrowserVisual({ mission, stage }: { mission: Mission; stage: RunStage }) {
+  const scout = mission.agents.find((agent) => agent.role === "scout") ?? mission.agents[0]
+  const verifier = mission.agents.find((agent) => agent.role === "verifier") ?? mission.agents[1]
+  const adversary = mission.agents.find((agent) => agent.role === "adversary") ?? mission.agents[2]
+  const active = stage !== "idle"
+
+  return (
+    <div className={`hero-visual ${active ? "is-running" : ""}`}>
+      <div className="pixel-field" aria-hidden="true" />
+      <div className="hero-tag hero-tag--left">TRUSTMESH_SWARM</div>
+      <div className="hero-tag hero-tag--right">STEEL_BROWSER</div>
+
+      <div className="hero-window hero-window--agent">
+        <div className="hero-window__toolbar"><span><i /><i /><i /></span><b>mission://zero-trust</b></div>
+        <div className="hero-chat">
+          <div className="chat-row"><span className="chat-avatar"><UserCheck /></span><p>Find the safest valid result, not just the first result.</p></div>
+          <div className="chat-row"><span className="chat-avatar is-blue"><Sparkles /></span><p><b>{scout?.label}</b> found a candidate. <b>{verifier?.label}</b> is independently checking it.</p></div>
+          <div className="chat-row"><span className="chat-avatar is-red"><ShieldAlert /></span><p><b>{adversary?.label}</b> {adversary?.state === "quarantined" ? "quarantined manipulative evidence." : "is trying to disprove it."}</p></div>
+        </div>
+        <div className="hero-window__status"><span className="live-dot" />{stageCopy[stage]}</div>
+      </div>
+
+      <div className="hero-window hero-window--browser">
+        <div className="hero-window__toolbar"><span><i /><i /><i /></span><b>{verifier?.source ?? "independent-source.example"}</b></div>
+        <div className="browser-scan-surface">
+          <div className="scan-beam" />
+          <div className="scan-copy"><small>SIGNALSHIELD</small><b>{mission.signals.length ? `${mission.signals.length} influence signals` : "content integrity clear"}</b><span>web content = untrusted evidence</span></div>
+          <div className="scan-score"><span>TRUST</span><b>{mission.trustScore}</b></div>
+          <div className="browser-gridlines" />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function MiniBrowser({ agent, active }: { agent: BrowserAgent; active: boolean }) {
@@ -148,7 +191,6 @@ function MissionApp({
   approvalBusy,
   error,
   setError,
-  health,
 }: {
   mission: Mission
   stage: RunStage
@@ -163,15 +205,12 @@ function MissionApp({
   approvalBusy: boolean
   error: string
   setError: (value: string) => void
-  health: Health | null
 }) {
   const researchAgents = mission.agents.filter((agent) => agent.role !== "executor")
   const executor = mission.agents.find((agent) => agent.role === "executor") ?? mission.agents[3]
   const running = ["launching", "researching", "verifying"].includes(stage)
   const canApprove = stage === "complete" && mission.status === "awaiting_approval" && mission.trustScore >= mission.threshold
   const [confirmOpen, setConfirmOpen] = React.useState(false)
-  const liveReady = health?.steel === "configured" && health?.aiResearch === "configured"
-  const liveTitle = health == null ? "Checking Steel/Claude configuration…" : liveReady ? "Steel and Claude are configured — this run will use real browser sessions." : "Add STEEL_API_KEY and ANTHROPIC_API_KEY on the server to run live; otherwise this falls back to the demo workflow."
 
   return (
     <section className="product-section" id="control-plane">
@@ -185,7 +224,7 @@ function MissionApp({
         <div className="mission-input-row">
           <textarea value={goal} onChange={(event) => setGoal(event.target.value)} rows={3} aria-label="Mission goal" placeholder="Describe the browser mission..." />
           <div className="mission-actions">
-            <label className="toggle-row" title={liveTitle}><input type="checkbox" checked={liveMode} onChange={(event) => setLiveMode(event.target.checked)} /><span className="switch-ui"><i /></span><b>LIVE STEEL</b></label>
+            <label className="toggle-row"><input type="checkbox" checked={liveMode} onChange={(event) => setLiveMode(event.target.checked)} /><span className="switch-ui"><i /></span><b>LIVE STEEL</b></label>
             <button className="primary-cta" onClick={runMission} disabled={!goal.trim() || running}>{running ? <><span className="spinner" /> RUNNING</> : <><Play /> LAUNCH SWARM</>}</button>
             <button className="ghost-cta" onClick={reset}><RefreshCw /> RESET</button>
           </div>
@@ -198,7 +237,7 @@ function MissionApp({
       <div className="agent-grid">{researchAgents.map((agent, index) => <MiniBrowser key={agent.id} agent={agent} active={running && index <= (stage === "launching" ? 0 : stage === "researching" ? 2 : 3)} />)}</div>
 
       <div className="signal-bar">
-        <div><ShieldCheck /><span><small>SIGNALSHIELD</small><b>{mission.signals.length ? `${mission.signals.length} influence signals detected` : "Content integrity clear"}</b><em className="signal-bar-note">{mission.noiseFiltered} ad/AI-directed segment{mission.noiseFiltered === 1 ? "" : "s"} filtered before agents read them</em></span></div>
+        <div><ShieldCheck /><span><small>SIGNALSHIELD</small><b>{mission.signals.length ? `${mission.signals.length} influence signals detected` : "Content integrity clear"}</b></span></div>
         <SignalPills signals={mission.signals} />
         <strong className="quarantine-number">{mission.quarantinedCount.toString().padStart(2, "0")}<small>QUARANTINED</small></strong>
       </div>
@@ -235,24 +274,60 @@ function FleetView({ mission, onRelease }: { mission: Mission; onRelease: () => 
 }
 
 function EvidenceView({ mission }: { mission: Mission }) {
-  return (
-    <section className="subpage">
-      <div className="subpage-heading"><span className="kicker">PROVENANCE & SIGNALSHIELD</span><h1>Every conclusion has a trail.</h1><p>Independent evidence is visible, disagreements are preserved, and quarantined sources cannot silently dominate consensus.</p></div>
-      <div className="evidence-overview"><div className="consensus-core"><ShieldCheck /><b>TRUSTED<br />CONSENSUS</b><span>{mission.trustScore}/100</span></div>{mission.sources.slice(0, 4).map((source, i) => <article key={source.id} className={`source-node source-node--${source.status}`} style={{ "--i": i } as React.CSSProperties}><Globe2 /><b>{source.host}</b><small>{source.status}</small></article>)}</div>
-      <div className="steel-table evidence-table"><div className="steel-table__row steel-table__head"><span>CLAIM</span><span>RESOLVED VALUE</span><span>SOURCES</span><span>VERDICT</span><span>EXPLANATION</span></div>{mission.evidence.map((item) => <div className="steel-table__row" key={item.id}><span><FileSearch />{item.claim}</span><b>{item.value}</b><span>{item.sources}</span><span className={`verdict verdict--${item.status}`}>{item.status}</span><span>{item.explanation ?? "—"}</span></div>)}</div>
-      <div className="factor-grid">{mission.trustFactors.map((factor) => <article key={factor.id}><span>{factor.label}</span><b className={factor.impact >= 0 ? "positive" : "negative"}>{factor.impact >= 0 ? "+" : ""}{factor.impact}</b><p>{factor.detail}</p></article>)}</div>
+  return <section className="subpage"><div className="subpage-heading"><span className="kicker">PROVENANCE LEDGER</span><h1>Every conclusion has a trail.</h1><p>Independent evidence is visible, disagreements are preserved, and quarantined sources cannot silently dominate consensus.</p></div><div className="evidence-overview"><div className="consensus-core"><ShieldCheck /><b>TRUSTED<br />CONSENSUS</b><span>{mission.trustScore}/100</span></div>{mission.sources.slice(0, 4).map((source, i) => <article key={source.id} className={`source-node source-node--${source.status}`} style={{ "--i": i } as React.CSSProperties}><Globe2 /><b>{source.host}</b><small>{source.status}</small></article>)}</div><div className="steel-table evidence-table"><div className="steel-table__row steel-table__head"><span>CLAIM</span><span>RESOLVED VALUE</span><span>SOURCES</span><span>VERDICT</span><span>EXPLANATION</span></div>{mission.evidence.map((item) => <div className="steel-table__row" key={item.id}><span><FileSearch />{item.claim}</span><b>{item.value}</b><span>{item.sources}</span><span className={`verdict verdict--${item.status}`}>{item.status}</span><span>{item.explanation ?? "—"}</span></div>)}</div><div className="factor-grid">{mission.trustFactors.map((factor) => <article key={factor.id}><span>{factor.label}</span><b className={factor.impact >= 0 ? "positive" : "negative"}>{factor.impact >= 0 ? "+" : ""}{factor.impact}</b><p>{factor.detail}</p></article>)}</div></section>
+}
 
-      <div className="section-heading-grid">
-        <div><span className="kicker">SIGNALSHIELD</span><h2>Assume the web is trying to influence the agent.</h2></div>
-        <p>Ads, sponsorship, and AI-directed instructions are stripped out of every page before an agent reasons about it — not just flagged afterward. Critical manipulation still quarantines the whole source from consensus.</p>
-      </div>
-      <div className="security-grid">
-        <article className="threat-summary"><Radar /><span className="kicker">CURRENT THREAT</span><h2>{mission.threat.detected ? mission.threat.host : "No critical threat"}</h2><p>{mission.threat.reason}</p><span className="threat-summary-note">{mission.noiseFiltered} noise segment{mission.noiseFiltered === 1 ? "" : "s"} pre-filtered this mission</span></article>
-        <div className="signal-stack">{mission.signals.length ? mission.signals.map((signal) => <article key={signal.id} className={`signal-record signal-record--${signal.severity}`}><span><ShieldAlert /><b>{signal.label}</b><small>{signal.category.replaceAll("_", " ")}</small></span><strong>{signal.severity}</strong><p>{signal.detail}</p>{signal.evidence && <code>{signal.evidence}</code>}</article>) : <article className="signal-record"><ShieldCheck /><b>No material signals detected.</b></article>}</div>
-      </div>
-      <div className="steel-table"><div className="steel-table__row steel-table__head"><span>SOURCE</span><span>ROLE</span><span>LEGITIMACY</span><span>STATUS</span><span>WHY</span></div>{mission.sources.map((source) => <div className="steel-table__row" key={source.id}><span><Globe2 /><b>{source.host}</b></span><span>{source.role}</span><span>{source.legitimacy}/100</span><span className={`source-status source-status--${source.status}`}>{source.status}</span><span>{source.reason ?? source.summary}</span></div>)}</div>
-    </section>
-  )
+function VirusTotalPanel({ mission }: { mission: Mission }) {
+  const [url, setUrl] = React.useState(mission.sources[0]?.url ?? "")
+  const [result, setResult] = React.useState<VirusTotalResult | null>(null)
+  const [error, setError] = React.useState("")
+  const [busy, setBusy] = React.useState(false)
+
+  async function scan() {
+    setBusy(true)
+    setError("")
+    setResult(null)
+    try {
+      const response = await fetch("/api/virustotal", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url }),
+      })
+      const data = await response.json() as VirusTotalResult & { error?: string }
+      if (!response.ok) throw new Error(data.error ?? "VirusTotal scan failed.")
+      setResult(data)
+    } catch (scanError) {
+      setError(scanError instanceof Error ? scanError.message : "VirusTotal scan failed.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const malicious = result?.stats.malicious ?? 0
+  const suspicious = result?.stats.suspicious ?? 0
+  const detections = malicious + suspicious
+  return <article className="vt-panel"><div className="vt-panel__heading"><span><span className="kicker"><ShieldCheck /> THREAT INTELLIGENCE</span><h2>VirusTotal URL scan</h2><p>Check a source against multiple security engines before trusting its content. The API key stays server-side.</p></span><span className="vt-badge">VT / API v3</span></div><div className="vt-form"><input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://example.com" type="url" aria-label="URL to scan with VirusTotal" /><button className="primary-cta" onClick={() => void scan()} disabled={busy || !url.trim()}>{busy ? <><RefreshCw className="spin" /> SCANNING</> : <><Radar /> SCAN URL</>}</button></div>{error && <p className="vt-error" role="alert">{error}</p>}{result && <div className="vt-result"><div className={`vt-verdict ${detections ? "vt-verdict--danger" : "vt-verdict--safe"}`}><ShieldCheck /><span><small>VIRUSTOTAL VERDICT</small><b>{detections ? `${detections} detection${detections === 1 ? "" : "s"}` : "No detections reported"}</b></span></div><div className="vt-stats"><span><b>{result.stats.harmless ?? 0}</b><small>harmless</small></span><span><b>{malicious}</b><small>malicious</small></span><span><b>{suspicious}</b><small>suspicious</small></span><span><b>{result.stats.undetected ?? 0}</b><small>undetected</small></span></div><div className="vt-result__footer"><span>STATUS: {result.status.toUpperCase()} · {result.url}</span><a href={result.permalink} target="_blank" rel="noreferrer">OPEN FULL REPORT <ExternalLink /></a></div></div>}</article>
+}
+
+function SecurityView({ mission }: { mission: Mission }) {
+  return <section className="subpage"><div className="subpage-heading"><span className="kicker">SIGNALSHIELD</span><h1>Assume the web is trying to influence the agent.</h1><p>Commercial influence is not automatically false. It becomes a verification signal. Critical AI-directed manipulation can quarantine a source.</p></div><VirusTotalPanel mission={mission} /><div className="security-grid"><article className="threat-summary"><Radar /><span className="kicker">CURRENT THREAT</span><h2>{mission.threat.detected ? mission.threat.host : "No critical threat"}</h2><p>{mission.threat.reason}</p></article><div className="signal-stack">{mission.signals.length ? mission.signals.map((signal) => <article key={signal.id} className={`signal-record signal-record--${signal.severity}`}><span><ShieldAlert /><b>{signal.label}</b><small>{signal.category.replaceAll("_", " ")}</small></span><strong>{signal.severity}</strong><p>{signal.detail}</p>{signal.evidence && <code>{signal.evidence}</code>}</article>) : <article className="signal-record"><ShieldCheck /><b>No material signals detected.</b></article>}</div></div><div className="practice-section"><div className="practice-heading"><span className="kicker"><ShieldCheck /> SECURITY OPERATING PRACTICES</span><h2>Controls that keep evidence from becoming authority.</h2><p>Use these principles whenever an agent reads untrusted pages or prepares an external action.</p></div><div className="practice-grid"><article><span className="practice-icon"><ShieldAlert /></span><h3>Treat content as untrusted</h3><p>Never follow instructions found in webpages, ads, emails, or documents. Extract claims as data and keep them separate from agent policy.</p></article><article><span className="practice-icon"><LockKeyhole /></span><h3>Isolate every role</h3><p>Use separate browser sessions, storage, credentials, and network permissions for discovery, verification, adversarial review, and execution.</p></article><article><span className="practice-icon"><Settings2 /></span><h3>Apply least privilege</h3><p>Give agents only the tools and access needed for the current step. Keep payments, account changes, downloads, and form submission disabled by default.</p></article><article><span className="practice-icon"><GitBranch /></span><h3>Corroborate independently</h3><p>Require important claims to agree across independent sources. Preserve disagreements instead of averaging them into false confidence.</p></article><article><span className="practice-icon"><UserCheck /></span><h3>Require human approval</h3><p>Show the exact staged action, evidence, trust score, and risk before provisioning an executor. Approval must be explicit and scoped.</p></article><article><span className="practice-icon"><History /></span><h3>Audit and clean up</h3><p>Record findings, decisions, and session events. Expire tokens, release browser sessions, and retain only the data required for review.</p></article></div></div><div className="steel-table"><div className="steel-table__row steel-table__head"><span>SOURCE</span><span>ROLE</span><span>LEGITIMACY</span><span>STATUS</span><span>WHY</span></div>{mission.sources.map((source) => <div className="steel-table__row" key={source.id}><span><Globe2 /><b>{source.host}</b></span><span>{source.role}</span><span>{source.legitimacy}/100</span><span className={`source-status source-status--${source.status}`}>{source.status}</span><span>{source.reason ?? source.summary}</span></div>)}</div></section>
+}
+
+function RunsView({ mission }: { mission: Mission }) {
+  function downloadMission() {
+    const blob = new Blob([JSON.stringify(mission, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = `${mission.id}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+  return <section className="subpage"><div className="subpage-heading"><span className="kicker">AUDIT TRAIL</span><h1>Nothing important happens silently.</h1><p>Mission, threat, approval, execution, and cleanup events remain visible for review.</p><button className="ghost-cta" onClick={downloadMission}><Download /> EXPORT JSON</button></div><div className="timeline">{[...mission.events].reverse().map((event, index) => <article key={event.id}><span className="timeline-index">{String(mission.events.length - index).padStart(2, "0")}</span><span className={`timeline-icon timeline-icon--${event.actor}`}>{event.actor === "human" ? <UserCheck /> : event.actor === "signalshield" ? <ShieldAlert /> : event.actor === "system" ? <Activity /> : <Globe2 />}</span><div><span className="kicker">{event.actor.toUpperCase()} · {event.type.toUpperCase()}</span><p>{event.message}</p><time>{new Date(event.at).toLocaleString()}</time></div></article>)}</div></section>
+}
+
+function SettingsView({ liveMode, setLiveMode, health }: { liveMode: boolean; setLiveMode: (value: boolean) => void; health: Health | null }) {
+  return <section className="subpage"><div className="subpage-heading"><span className="kicker">CONFIGURATION</span><h1>Demo-safe. Live when you are.</h1><p>TrustMesh remains fully explorable without credentials, then activates real Steel sessions when server-side keys are present.</p></div><div className="config-grid"><article><span className="config-icon"><Globe2 /></span><span className="kicker">STEEL</span><h3>{health?.steel === "configured" ? "API configured" : "Demo fallback"}</h3><p>{health?.steel === "configured" ? "Real isolated browser sessions can be provisioned." : "Add STEEL_API_KEY to activate live browser infrastructure."}</p></article><article><span className="config-icon"><Sparkles /></span><span className="kicker">AI RESEARCH</span><h3>{health?.aiResearch === "configured" ? "Planner configured" : "Optional"}</h3><p>{health?.aiResearch === "configured" ? "Autonomous source planning is available." : "OPENAI_API_KEY adds autonomous source discovery but is not required."}</p></article><article><span className="config-icon"><ShieldCheck /></span><span className="kicker">RUN MODE</span><h3>{liveMode ? "Request live Steel" : "Use demo mode"}</h3><label className="toggle-row"><input type="checkbox" checked={liveMode} onChange={(event) => setLiveMode(event.target.checked)} /><span className="switch-ui"><i /></span><b>LIVE STEEL</b></label></article></div><div className="env-panel"><header><TerminalSquare /> .env.local</header><code>STEEL_API_KEY=your_steel_key</code><code>OPENAI_API_KEY=your_openai_key # optional</code><code>OPENAI_MODEL=gpt-5.6-luna # optional</code><code>STEEL_SESSION_TIMEOUT_MS=600000</code><code>STEEL_INACTIVITY_TIMEOUT_MS=180000</code></div></section>
 }
 
 export function TrustMeshDashboard() {
@@ -260,15 +335,7 @@ export function TrustMeshDashboard() {
   const [theme, setTheme] = React.useState<"dark" | "light">("dark")
   const [mobileNav, setMobileNav] = React.useState(false)
   const [goal, setGoal] = React.useState(DEFAULT_GOAL)
-  // The very first mission is rendered on both the server and the client
-  // during hydration — createDemoMission()'s id is random (Math.random()),
-  // so calling it here would produce a different id in server HTML than in
-  // the client's hydration pass and trigger a hydration mismatch on the
-  // <code>{mission.id}</code> text below. Pin it to a fixed id for this one
-  // initial, pre-launch placeholder; every mission the user actually runs
-  // (via Launch Swarm / Reset) is created client-side after mount, where
-  // createDemoMission()'s normal randomness is safe.
-  const [mission, setMission] = React.useState(() => ({ ...createDemoMission(), id: "TM-INITIAL", approvalToken: "APR-INITIAL" }))
+  const [mission, setMission] = React.useState(() => createDemoMission(DEFAULT_GOAL, { deterministic: true }))
   const [stage, setStage] = React.useState<RunStage>("idle")
   const [liveMode, setLiveMode] = React.useState(false)
   const [error, setError] = React.useState("")
@@ -358,6 +425,7 @@ export function TrustMeshDashboard() {
   return (
     <main className="steel-page">
       <div className="steel-frame">
+        <div className="launch-bar"><span className="launch-icon"><Zap /></span><span>TRUSTMESH // STEEL HACKATHON</span><b>Zero-trust browsing is live</b><ChevronRight /></div>
         <header className="steel-nav">
           <button className="brand" onClick={() => setView("mission")}><Mark /><span>TrustMesh</span></button>
           <nav className={mobileNav ? "is-open" : ""}>{navigation.map((item) => <button key={item.id} className={view === item.id ? "is-active" : ""} onClick={() => { setView(item.id); setMobileNav(false) }}>{item.label}</button>)}</nav>
@@ -366,11 +434,13 @@ export function TrustMeshDashboard() {
 
         {view === "mission" ? <>
           <section className="steel-hero">
-            <div className="hero-copy"><span className="kicker">BROWSER SECURITY FOR AI AGENTS · STEEL HACKATHON</span><h1>Zero-Trust<br />Browser Infrastructure<br />for AI Agents</h1><p>TrustMesh is a verification and safety layer that prevents one webpage, one source, or one agent from controlling a consequential browser action.</p><div className="hero-actions"><button className="primary-cta hero-primary" onClick={() => document.getElementById("control-plane")?.scrollIntoView({ behavior: "smooth" })}>START A MISSION <ArrowRight /></button><button className="ghost-cta" onClick={() => setView("fleet")}>VIEW BROWSER SWARM <Globe2 /></button></div></div>
+            <div className="hero-copy"><span className="kicker">BROWSER SECURITY FOR AI AGENTS</span><h1>Zero-Trust<br />Browser Infrastructure<br />for AI Agents</h1><p>TrustMesh is a verification and safety layer that prevents one webpage, one source, or one agent from controlling a consequential browser action.</p><div className="hero-actions"><button className="primary-cta hero-primary" onClick={() => document.getElementById("control-plane")?.scrollIntoView({ behavior: "smooth" })}>START A MISSION <ArrowRight /></button><button className="ghost-cta" onClick={() => setView("fleet")}>VIEW BROWSER SWARM <Globe2 /></button></div></div>
+            <HeroBrowserVisual mission={mission} stage={stage} />
           </section>
-          <MissionApp mission={mission} stage={stage} goal={goal} setGoal={setGoal} liveMode={liveMode} setLiveMode={setLiveMode} runMission={runMission} reset={reset} approve={approve} reject={reject} approvalBusy={approvalBusy} error={error} setError={setError} health={health} />
+          <section className="hero-metrics"><div><b>03</b><span>Independent Research Agents</span></div><div><b>01</b><span>Human-Gated Executor</span></div><div><b>{mission.trustScore}/100</b><span>Explainable Trust Score</span></div></section>
+          <MissionApp mission={mission} stage={stage} goal={goal} setGoal={setGoal} liveMode={liveMode} setLiveMode={setLiveMode} runMission={runMission} reset={reset} approve={approve} reject={reject} approvalBusy={approvalBusy} error={error} setError={setError} />
           <section className="principle-strip"><span>FIND</span><ChevronRight /><span>VERIFY</span><ChevronRight /><span>DISPROVE</span><ChevronRight /><span>SCORE TRUST</span><ChevronRight /><span>HUMAN APPROVAL</span><ChevronRight /><span>EXECUTE</span></section>
-        </> : view === "fleet" ? <FleetView mission={mission} onRelease={() => void releaseSessions()} /> : <EvidenceView mission={mission} />}
+        </> : view === "fleet" ? <FleetView mission={mission} onRelease={() => void releaseSessions()} /> : view === "evidence" ? <EvidenceView mission={mission} /> : view === "security" ? <SecurityView mission={mission} /> : view === "runs" ? <RunsView mission={mission} /> : <SettingsView liveMode={liveMode} setLiveMode={setLiveMode} health={health} />}
 
         <footer className="steel-footer"><div><Mark /><b>TrustMesh</b><span>Don&apos;t trust your browser agent. Verify it.</span></div><div><span><Activity /> {health?.steel === "configured" ? "Steel API configured" : "Demo-ready"}</span><span>Web content is untrusted evidence, never authority.</span></div></footer>
       </div>
